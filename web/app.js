@@ -5,7 +5,36 @@ const sendBtn = document.getElementById("send");
 const quickButtons = document.querySelectorAll(".quick");
 const titleEl = document.getElementById("chatTitle");
 
+const SESSION_ID_KEY = "wx_agent_session_id";
+const SESSION_TOUCH_KEY = "wx_agent_session_touch";
+const SESSION_IDLE_MS = 30 * 60 * 1000;
+
 let busy = false;
+
+function createSessionId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID().replace(/-/g, "");
+  }
+  return `sid_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function updateSessionId(sessionId) {
+  if (!sessionId) return;
+  localStorage.setItem(SESSION_ID_KEY, sessionId);
+  localStorage.setItem(SESSION_TOUCH_KEY, String(Date.now()));
+}
+
+function getSessionId() {
+  const now = Date.now();
+  let sessionId = localStorage.getItem(SESSION_ID_KEY) || "";
+  const lastTouchRaw = localStorage.getItem(SESSION_TOUCH_KEY) || "0";
+  const lastTouch = Number.parseInt(lastTouchRaw, 10) || 0;
+  if (!sessionId || now - lastTouch > SESSION_IDLE_MS) {
+    sessionId = createSessionId();
+  }
+  updateSessionId(sessionId);
+  return sessionId;
+}
 
 function addMessage(role, text, streaming = false) {
   const div = document.createElement("div");
@@ -59,12 +88,13 @@ async function ask(message) {
   setBusy(true);
   addMessage("user", message);
   const assistant = addMessage("assistant", "", true);
+  const sessionId = getSessionId();
 
   try {
     const resp = await fetch("/api/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, session_id: sessionId }),
     });
 
     if (!resp.ok || !resp.body) {
@@ -93,9 +123,11 @@ async function ask(message) {
             document.title = nextTitle;
             if (titleEl) titleEl.textContent = nextTitle;
           }
+          if (evt.data.session_id) updateSessionId(evt.data.session_id);
         } else if (evt.event === "error") {
           assistant.textContent = evt.data.message || "服务异常，请稍后重试。";
         } else if (evt.event === "done") {
+          if (evt.data.session_id) updateSessionId(evt.data.session_id);
           if (!assistant.textContent.trim()) {
             assistant.textContent = evt.data.answer || "已处理完成。";
           }
@@ -136,7 +168,5 @@ for (const btn of quickButtons) {
   });
 }
 
-addMessage(
-  "assistant",
-  "你好，我是 WX Agent。你可以直接输入问题，我会基于知识库实时回复。"
-);
+getSessionId();
+addMessage("assistant", "你好，我是 WX Agent。你可以直接输入问题，我会基于知识库实时回复。");

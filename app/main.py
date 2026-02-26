@@ -9,6 +9,7 @@ import re
 import tempfile
 import threading
 import time
+import uuid
 from typing import Iterator
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, UploadFile
@@ -56,12 +57,19 @@ ollama = OllamaClient(
 event_log_path = Path("data/events.log")
 event_log_path.parent.mkdir(parents=True, exist_ok=True)
 kb_miss_log_path = Path("data/kb_miss.log")
+session_store_dir = Path(settings.chat_session_store_dir) if settings.chat_session_store_dir else None
+if session_store_dir:
+    session_store_dir.mkdir(parents=True, exist_ok=True)
 web_root = Path(__file__).resolve().parent.parent / "web"
 kb_sync_lock = threading.Lock()
 kb_sync_stop_event = threading.Event()
 kb_sync_thread: threading.Thread | None = None
 kb_sync_last_result: dict = {"ok": False, "detail": "not started"}
 reply_executor = ThreadPoolExecutor(max_workers=4)
+chat_session_lock = threading.Lock()
+chat_sessions: dict[str, dict] = {}
+chat_session_stop_event = threading.Event()
+chat_session_thread: threading.Thread | None = None
 
 
 def _log_event(kind: str, detail: str = "") -> None:
@@ -82,6 +90,179 @@ class WebChatRequest(BaseModel):
     session_id: str | None = None
 
 
+def _normalize_session_id(raw: str | None) -> str:
+    sid = (raw or "").strip()
+    if not sid:
+        return ""
+    sid = re.sub(r"[^a-zA-Z0-9_-]", "_", sid)
+    return sid[:80]
+
+
+def _ensure_session_id(raw: str | None) -> str:
+    sid = _normalize_session_id(raw)
+    if sid:
+        return sid
+    return uuid.uuid4().hex
+
+
+def _session_file_path(session_id: str) -> Path | None:
+    if not session_store_dir or not session_id:
+        return None
+    return session_store_dir / f"{session_id}.jsonl"
+
+
+def _session_get_recent_messages(session_id: str) -> list[dict]:
+    sid = _normalize_session_id(session_id)
+    if not sid:
+        return []
+    now = time.time()
+    ttl_sec = max(60, settings.chat_session_ttl_sec)
+    limit = max(1, settings.chat_session_max_turns) * 2
+    with chat_session_lock:
+        item = chat_sessions.get(sid)
+        if not item:
+            item = None
+        else:
+            if float(item.get("updated_at", 0.0)) < now - ttl_sec:
+                chat_sessions.pop(sid, None)
+                item = None
+            else:
+                recent = item.get("messages", [])[-limit:]
+                return [{"role": str(m.get("role", "")), "content": str(m.get("content", ""))} for m in recent]
+
+    # Warm-up from temporary file when process was restarted but session has not expired.
+    path = _session_file_path(sid)
+    if path is None or not path.exists():
+        return []
+    try:
+        if path.stat().st_mtime < now - ttl_sec:
+            path.unlink(missing_ok=True)
+            return []
+    except Exception:
+        return []
+
+    recovered: list[dict] = []
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as f:
+            recent_lines: deque[str] = deque((line.strip() for line in f if line.strip()), maxlen=limit)
+        for line in recent_lines:
+            row = json.loads(line)
+            user_text = str(row.get("user", "")).strip()
+            assistant_text = str(row.get("assistant", "")).strip()
+            if user_text:
+                recovered.append({"role": "user", "content": user_text, "ts": now})
+            if assistant_text:
+                recovered.append({"role": "assistant", "content": assistant_text, "ts": now})
+    except Exception:
+        return []
+
+    if not recovered:
+        return []
+    with chat_session_lock:
+        chat_sessions[sid] = {"updated_at": now, "messages": recovered[-limit:]}
+    return [{"role": str(m.get("role", "")), "content": str(m.get("content", ""))} for m in recovered[-limit:]]
+
+
+def _session_append_turn(session_id: str | None, user_text: str, assistant_text: str) -> None:
+    sid = _normalize_session_id(session_id)
+    if not sid:
+        return
+    user_text = (user_text or "").strip()
+    assistant_text = (assistant_text or "").strip()
+    if not user_text or not assistant_text:
+        return
+
+    now = time.time()
+    payload = {
+        "time": datetime.now(timezone.utc).isoformat(),
+        "user": user_text,
+        "assistant": assistant_text,
+    }
+    with chat_session_lock:
+        item = chat_sessions.setdefault(sid, {"updated_at": now, "messages": []})
+        messages = item.setdefault("messages", [])
+        messages.append({"role": "user", "content": user_text, "ts": now})
+        messages.append({"role": "assistant", "content": assistant_text, "ts": now})
+        keep = max(1, settings.chat_session_max_turns) * 2
+        if len(messages) > keep:
+            del messages[: len(messages) - keep]
+        item["updated_at"] = now
+
+    path = _session_file_path(sid)
+    if path is None:
+        return
+    try:
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _cleanup_expired_sessions() -> None:
+    ttl_sec = max(60, settings.chat_session_ttl_sec)
+    cutoff = time.time() - ttl_sec
+    expired: list[str] = []
+    with chat_session_lock:
+        for sid, item in list(chat_sessions.items()):
+            if float(item.get("updated_at", 0.0)) < cutoff:
+                expired.append(sid)
+                chat_sessions.pop(sid, None)
+
+    removed_files = 0
+    for sid in expired:
+        path = _session_file_path(sid)
+        if path and path.exists():
+            path.unlink(missing_ok=True)
+            removed_files += 1
+
+    if session_store_dir and session_store_dir.exists():
+        for file_path in session_store_dir.glob("*.jsonl"):
+            try:
+                if file_path.stat().st_mtime < cutoff:
+                    file_path.unlink(missing_ok=True)
+                    removed_files += 1
+            except Exception:
+                continue
+
+    if expired or removed_files:
+        _log_event("session_cleanup", f"expired_sessions={len(expired)} removed_files={removed_files}")
+
+
+def _active_session_count() -> int:
+    with chat_session_lock:
+        return len(chat_sessions)
+
+
+def _start_session_cleanup_if_needed() -> None:
+    global chat_session_thread
+    if chat_session_thread and chat_session_thread.is_alive():
+        return
+
+    interval = max(30, settings.chat_session_cleanup_sec)
+
+    def _loop() -> None:
+        _log_event("session_cleanup_loop", f"started interval={interval}s ttl={settings.chat_session_ttl_sec}s")
+        while not chat_session_stop_event.wait(interval):
+            _cleanup_expired_sessions()
+        _log_event("session_cleanup_loop", "stopped")
+
+    chat_session_thread = threading.Thread(target=_loop, daemon=True)
+    chat_session_thread.start()
+
+
+def _render_session_history(messages: list[dict]) -> str:
+    if not messages:
+        return ""
+    rows: list[str] = []
+    for msg in messages[-8:]:
+        role = "用户" if msg.get("role") == "user" else "客服"
+        content = (msg.get("content", "") or "").strip()
+        if not content:
+            continue
+        rows.append(f"{role}: {content[:280]}")
+    return "\n".join(rows)
+
+
 def _resolve_web_chat_url(request: Request | None = None) -> str:
     if settings.web_chat_url:
         return settings.web_chat_url
@@ -93,8 +274,9 @@ def _resolve_web_chat_url(request: Request | None = None) -> str:
     return "/chat"
 
 
-def _build_web_rag_prompt(question: str, hits: list[dict]) -> str:
+def _build_web_rag_prompt(question: str, hits: list[dict], history_text: str = "") -> str:
     context = "\n\n".join([f"[{h['source_name']}] {(h['chunk_text'] or '')[:320]}" for h in hits[:4]])
+    history_block = f"同一会话近期记录：\n{history_text}\n\n" if history_text else ""
     return (
         "你是企业客服助手，请基于提供的知识库片段回答用户。\n"
         "要求：\n"
@@ -102,6 +284,7 @@ def _build_web_rag_prompt(question: str, hits: list[dict]) -> str:
         "2) 先给结论，再给可执行步骤；\n"
         "3) 不要编造政策、价格、时效承诺；\n"
         "4) 语气专业但自然。\n\n"
+        f"{history_block}"
         f"知识库片段：\n{context}\n\n"
         f"用户问题：{question}\n\n"
         "请直接给出客服回复："
@@ -420,7 +603,8 @@ def _is_business_question(question: str) -> bool:
     return _direct_faq_reply(q) is not None
 
 
-def _build_general_fallback_prompt(question: str) -> str:
+def _build_general_fallback_prompt(question: str, history_text: str = "") -> str:
+    history_block = f"同一会话近期记录：\n{history_text}\n\n" if history_text else ""
     return (
         "你是中文客服助手。请直接回答用户问题，不要输出推理过程。\n"
         "要求：\n"
@@ -428,13 +612,14 @@ def _build_general_fallback_prompt(question: str) -> str:
         "2) 先给结论，再给 1-3 条可执行建议；\n"
         "3) 不确定时明确说明，并建议以官方信息为准；\n"
         "4) 输出控制在 120 字以内。\n\n"
+        f"{history_block}"
         f"用户问题：{question}\n\n"
         "请直接输出最终回复："
     )
 
 
-def _general_model_stream(question: str, timeout_sec: float = 60) -> Iterator[str]:
-    prompt = _build_general_fallback_prompt(question)
+def _general_model_stream(question: str, timeout_sec: float = 60, history_text: str = "") -> Iterator[str]:
+    prompt = _build_general_fallback_prompt(question, history_text=history_text)
     raw = ""
     sent_len = 0
     emitted = False
@@ -460,8 +645,8 @@ def _general_model_stream(question: str, timeout_sec: float = 60) -> Iterator[st
         return
 
 
-def _general_model_answer(question: str, timeout_sec: float = 60) -> str:
-    prompt = _build_general_fallback_prompt(question)
+def _general_model_answer(question: str, timeout_sec: float = 60, history_text: str = "") -> str:
+    prompt = _build_general_fallback_prompt(question, history_text=history_text)
     try:
         answer = ollama.chat(prompt, timeout_sec=timeout_sec).strip()
     except Exception:
@@ -470,11 +655,14 @@ def _general_model_answer(question: str, timeout_sec: float = 60) -> str:
     return answer
 
 
-def _web_rag_stream(question: str) -> Iterator[str]:
+def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[str]:
     q = (question or "").strip()
     if not q:
         yield "请先输入你的问题，我会尽快帮你处理。"
         return
+
+    sid = _normalize_session_id(session_id)
+    history_text = _render_session_history(_session_get_recent_messages(sid))
 
     preset = _preset_reply(q)
     if preset:
@@ -492,7 +680,7 @@ def _web_rag_stream(question: str) -> Iterator[str]:
         _log_event("kb_miss", f"reason=no_hits q={q[:120]}")
         if settings.general_fallback_enabled and not _is_business_question(q):
             emitted = False
-            for piece in _general_model_stream(q, timeout_sec=75):
+            for piece in _general_model_stream(q, timeout_sec=75, history_text=history_text):
                 emitted = True
                 yield piece
             if emitted:
@@ -504,7 +692,7 @@ def _web_rag_stream(question: str) -> Iterator[str]:
         _log_event("kb_miss", f"reason=low_relevance q={q[:120]}")
         if settings.general_fallback_enabled and not _is_business_question(q):
             emitted = False
-            for piece in _general_model_stream(q, timeout_sec=75):
+            for piece in _general_model_stream(q, timeout_sec=75, history_text=history_text):
                 emitted = True
                 yield piece
             if emitted:
@@ -512,7 +700,7 @@ def _web_rag_stream(question: str) -> Iterator[str]:
         yield "目前知识库里还没有足够匹配的信息。请补充商品名、订单号、时间或问题现象，我会马上继续处理。"
         return
 
-    prompt = _build_web_rag_prompt(q, hits)
+    prompt = _build_web_rag_prompt(q, hits, history_text=history_text)
     emitted = False
     raw = ""
     sent_len = 0
@@ -840,14 +1028,18 @@ def _start_interval_sync_if_needed() -> None:
 
 @app.on_event("startup")
 def _on_startup() -> None:
+    chat_session_stop_event.clear()
     if settings.kb_auto_sync_on_start:
         _run_kb_sync("startup")
     _start_interval_sync_if_needed()
+    _cleanup_expired_sessions()
+    _start_session_cleanup_if_needed()
 
 
 @app.on_event("shutdown")
 def _on_shutdown() -> None:
     kb_sync_stop_event.set()
+    chat_session_stop_event.set()
     reply_executor.shutdown(wait=False)
 
 
@@ -861,7 +1053,13 @@ def healthz() -> dict:
         "kb_sync_interval_sec": settings.kb_sync_interval_sec,
         "wechat_async_stream_reply": settings.wechat_async_stream_reply,
         "general_fallback_enabled": settings.general_fallback_enabled,
+        "chat_session_ttl_sec": settings.chat_session_ttl_sec,
+        "chat_session_max_turns": settings.chat_session_max_turns,
+        "chat_session_cleanup_sec": settings.chat_session_cleanup_sec,
+        "chat_session_store_dir": str(session_store_dir.resolve()) if session_store_dir else "",
+        "active_chat_sessions": _active_session_count(),
         "web_chat_url": settings.web_chat_url,
+        "web_chat_title": settings.web_chat_title,
         "ollama_chat_model": settings.ollama_chat_model,
         "ollama_embed_model": settings.ollama_embed_model,
         "chunk_overlap_chars": settings.chunk_overlap_chars,
@@ -903,26 +1101,33 @@ def api_chat(req: WebChatRequest) -> dict:
     q = (req.message or "").strip()
     if not q:
         raise HTTPException(status_code=400, detail="message is required")
-    chunks = list(_web_rag_stream(q))
+    sid = _ensure_session_id(req.session_id)
+    chunks = list(_web_rag_stream(q, session_id=sid))
     answer = "".join(chunks).strip()
-    return {"ok": True, "answer": answer}
+    if answer:
+        _session_append_turn(sid, q, answer)
+    return {"ok": True, "answer": answer, "session_id": sid}
 
 
 @app.post("/api/chat/stream")
 def api_chat_stream(req: WebChatRequest) -> StreamingResponse:
     q = (req.message or "").strip()
+    sid = _ensure_session_id(req.session_id)
 
     def _iter():
         if not q:
             yield _sse("error", {"message": "message is required"})
             yield _sse("done", {"answer": ""})
             return
-        yield _sse("meta", {"title": settings.web_chat_title})
+        yield _sse("meta", {"title": settings.web_chat_title, "session_id": sid})
         full = ""
-        for chunk in _web_rag_stream(q):
+        for chunk in _web_rag_stream(q, session_id=sid):
             full += chunk
             yield _sse("chunk", {"text": chunk})
-        yield _sse("done", {"answer": full.strip()})
+        answer = full.strip()
+        if answer:
+            _session_append_turn(sid, q, answer)
+        yield _sse("done", {"answer": answer, "session_id": sid})
 
     headers = {
         "Cache-Control": "no-cache",
