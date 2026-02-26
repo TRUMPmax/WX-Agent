@@ -25,7 +25,15 @@ from app.wechat_api import get_access_token
 
 
 app = FastAPI(title="WeiXinAgent", version="1.0.0")
-kb = KnowledgeBase(settings.kb_db_path, max_chunk_chars=settings.max_chunk_chars)
+kb = KnowledgeBase(
+    settings.kb_db_path,
+    max_chunk_chars=settings.max_chunk_chars,
+    chunk_overlap_chars=settings.chunk_overlap_chars,
+    hybrid_dense_weight=settings.hybrid_dense_weight,
+    hybrid_bm25_weight=settings.hybrid_bm25_weight,
+    hybrid_rrf_k=settings.hybrid_rrf_k,
+    retrieval_candidates=settings.retrieval_candidates,
+)
 ollama = OllamaClient(
     base_url=settings.ollama_base_url,
     chat_model=settings.ollama_chat_model,
@@ -175,6 +183,12 @@ def healthz() -> dict:
         "kb_source_dir": str(Path(settings.kb_source_dir).resolve()),
         "kb_auto_sync_on_start": settings.kb_auto_sync_on_start,
         "kb_sync_interval_sec": settings.kb_sync_interval_sec,
+        "ollama_chat_model": settings.ollama_chat_model,
+        "ollama_embed_model": settings.ollama_embed_model,
+        "chunk_overlap_chars": settings.chunk_overlap_chars,
+        "retrieval_candidates": settings.retrieval_candidates,
+        "hybrid_dense_weight": settings.hybrid_dense_weight,
+        "hybrid_bm25_weight": settings.hybrid_bm25_weight,
     }
 
 

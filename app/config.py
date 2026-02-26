@@ -31,6 +31,11 @@ class Settings:
     kb_auto_sync_on_start: bool = _as_bool(os.getenv("KB_AUTO_SYNC_ON_START", "1"), default=True)
     kb_sync_interval_sec: int = int(os.getenv("KB_SYNC_INTERVAL_SEC", "0"))
     max_chunk_chars: int = int(os.getenv("MAX_CHUNK_CHARS", "500"))
+    chunk_overlap_chars: int = int(os.getenv("CHUNK_OVERLAP_CHARS", "80"))
+    retrieval_candidates: int = int(os.getenv("RETRIEVAL_CANDIDATES", "40"))
+    hybrid_dense_weight: float = float(os.getenv("HYBRID_DENSE_WEIGHT", "0.65"))
+    hybrid_bm25_weight: float = float(os.getenv("HYBRID_BM25_WEIGHT", "0.35"))
+    hybrid_rrf_k: int = int(os.getenv("HYBRID_RRF_K", "60"))
     top_k: int = int(os.getenv("TOP_K", "4"))
 
 
