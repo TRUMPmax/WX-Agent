@@ -27,9 +27,9 @@ try {
 }
 
 try {
-    $public = Invoke-RestMethod -Method Get -Uri "http://$PublicHost/healthz" -TimeoutSec 12
+    $public = Invoke-RestMethod -Method Get -Uri "https://$PublicHost/healthz" -TimeoutSec 12
     Write-Host "Public health: " ($public | ConvertTo-Json -Compress)
-    Write-Host "WeChat callback URL: http://$PublicHost/wechat"
+    Write-Host "WeChat callback URL: https://$PublicHost/wechat"
 } catch {
     Write-Host "Public health failed. Check tunnel logs: .cf_named_stdout.log / .cf_named_stderr.log"
 }

@@ -59,7 +59,8 @@ if (Test-Path $envPath) {
 $lines = Set-Or-AddEnvLine -Lines $lines -Key "OLLAMA_CHAT_MODEL" -Value $chatModel
 $lines = Set-Or-AddEnvLine -Lines $lines -Key "OLLAMA_EMBED_MODEL" -Value $embedModel
 
-Set-Content -Path $envPath -Value $lines -Encoding UTF8
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllLines($envPath, $lines, $utf8NoBom)
 
 Write-Host "Switched profile: $Profile"
 Write-Host "OLLAMA_CHAT_MODEL=$chatModel"

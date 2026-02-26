@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WX Agent 智能客服</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="ambient"></div>
+  <div class="shell">
+    <aside class="left-panel">
+      <div class="brand">
+        <div class="brand-mark">WX</div>
+        <div>
+          <h1>智能客服中心</h1>
+          <p>Web 在线咨询 · 实时响应</p>
+        </div>
+      </div>
+      <div class="panel-card">
+        <h2>常见咨询</h2>
+        <button class="quick" data-q="商品规格咨询">商品规格咨询</button>
+        <button class="quick" data-q="退换货政策">退换货政策</button>
+        <button class="quick" data-q="账号与登录问题">账号与登录问题</button>
+        <button class="quick" data-q="售后处理建议">售后处理建议</button>
+      </div>
+      <div class="panel-note">
+        <p>提示：请尽量描述商品名、订单号或具体场景，回复会更准确。</p>
+      </div>
+    </aside>
+
+    <main class="chat-panel">
+      <header class="chat-header">
+        <div class="status-dot"></div>
+        <div>
+          <strong id="chatTitle">WX Agent 在线客服</strong>
+          <span>当前为流式回复模式</span>
+        </div>
+      </header>
+
+      <section id="messages" class="messages"></section>
+
+      <form id="composer" class="composer">
+        <textarea id="input" placeholder="请输入你的问题，支持连续追问…" rows="1"></textarea>
+        <button id="send" type="submit">发送</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
