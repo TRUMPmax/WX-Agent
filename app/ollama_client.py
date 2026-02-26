@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import requests
@@ -26,10 +27,23 @@ class OllamaClient:
         return vector
 
     def chat(self, prompt: str, timeout_sec: float | None = None) -> str:
+        system_prompt = (
+            "你是企业客服助手。"
+            "只输出给用户的最终答复，不要输出分析过程、思考过程、草稿或推理。"
+            "禁止使用“好的，用户问的是”这类元叙述。"
+        )
         payload = {
             "model": self.chat_model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
             "stream": False,
+            "think": False,
+            "options": {
+                "temperature": 0.2,
+                "num_predict": 160,
+            },
         }
         timeout = timeout_sec if timeout_sec is not None else 120
         resp = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=timeout)
@@ -55,3 +69,41 @@ class OllamaClient:
         resp.raise_for_status()
         data: dict[str, Any] = resp.json()
         return data.get("message", {}).get("content", "").strip()
+
+    def chat_stream(self, prompt: str, timeout_sec: float | None = None):
+        system_prompt = (
+            "你是企业客服助手。"
+            "只输出给用户的最终答复，不要输出分析过程、思考过程、草稿或推理。"
+            "禁止使用“好的，用户问的是”这类元叙述。"
+        )
+        payload = {
+            "model": self.chat_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": True,
+            "think": False,
+            "options": {
+                "temperature": 0.2,
+                # qwen3 may emit a long <think> section before the final answer.
+                # Keep this high enough so we can still receive the user-facing reply.
+                "num_predict": 800,
+            },
+        }
+        timeout = timeout_sec if timeout_sec is not None else 120
+        with requests.post(f"{self.base_url}/api/chat", json=payload, timeout=timeout, stream=True) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
+                try:
+                    data: dict[str, Any] = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                message = data.get("message", {})
+                piece = message.get("content", "")
+                if piece:
+                    yield piece
+                if data.get("done"):
+                    break
