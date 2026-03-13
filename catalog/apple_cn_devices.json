@@ -1,0 +1,415 @@
+{
+  "meta": {
+    "catalog_name": "apple_cn_devices",
+    "market": "CN",
+    "currency": "CNY",
+    "verified_on": "2026-03-13",
+    "maintainer_note": "价格使用 Apple 中国官网公开起售价；同系列多机型共用起售价时，会在 price_note 标注。客服回复请以用户下单页实时价格为准。"
+  },
+  "products": [
+    {
+      "id": "iphone-17-pro",
+      "category": "phone",
+      "model": "iPhone 17 Pro",
+      "aliases": ["iphone17pro", "17pro", "苹果17pro"],
+      "starting_price_cny": 8999,
+      "price_note": "Apple 中国官网 iPhone 17 Pro 系列起售价为 RMB 8,999 起。",
+      "screen_size_inch": 6.3,
+      "chip": "A19 Pro",
+      "storage_options_gb": [256, 512, 1024, 2048],
+      "battery_video_playback_hours": 27,
+      "camera_summary": "后置三摄（48MP 主摄 + 48MP 超广角 + 48MP 长焦）",
+      "tags": ["camera", "performance", "premium", "small_screen"],
+      "use_cases": ["高质量拍照和视频", "重度性能需求", "偏好相对紧凑机身"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-iphone",
+      "specs_url": "https://support.apple.com/zh-cn/123354"
+    },
+    {
+      "id": "iphone-17-pro-max",
+      "category": "phone",
+      "model": "iPhone 17 Pro Max",
+      "aliases": ["iphone17promax", "17promax", "苹果17promax", "pro max"],
+      "starting_price_cny": 8999,
+      "price_note": "Apple 中国官网 iPhone 17 Pro 系列起售价为 RMB 8,999 起；Pro Max 具体价格以下单配置页为准。",
+      "screen_size_inch": 6.9,
+      "chip": "A19 Pro",
+      "storage_options_gb": [256, 512, 1024, 2048],
+      "battery_video_playback_hours": null,
+      "camera_summary": "后置多摄系统（以官方技术规格页为准）",
+      "tags": ["camera", "performance", "premium", "large_screen", "battery"],
+      "use_cases": ["大屏影音", "拍照与视频创作", "重度多任务"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-iphone",
+      "specs_url": "https://support.apple.com/zh-cn/123357"
+    },
+    {
+      "id": "iphone-air",
+      "category": "phone",
+      "model": "iPhone Air",
+      "aliases": ["iphoneair", "苹果air手机", "17air"],
+      "starting_price_cny": 7999,
+      "price_note": "Apple 中国官网起售价 RMB 7,999 起。",
+      "screen_size_inch": 6.7,
+      "chip": "A19 Pro",
+      "storage_options_gb": [256, 512, 1024],
+      "battery_video_playback_hours": 24,
+      "camera_summary": "后置双摄（48MP 主摄 + 48MP 超广角）",
+      "tags": ["portable", "camera", "performance", "large_screen", "premium"],
+      "use_cases": ["兼顾轻薄与性能", "日常拍照和视频", "大屏阅读与娱乐"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-iphone",
+      "specs_url": "https://support.apple.com/zh-cn/123356"
+    },
+    {
+      "id": "iphone-17",
+      "category": "phone",
+      "model": "iPhone 17",
+      "aliases": ["iphone17", "苹果17"],
+      "starting_price_cny": 5999,
+      "price_note": "Apple 中国官网起售价 RMB 5,999 起。",
+      "screen_size_inch": 6.3,
+      "chip": "A19",
+      "storage_options_gb": [128, 256, 512],
+      "battery_video_playback_hours": 26,
+      "camera_summary": "后置双摄（48MP 主摄 + 12MP 超广角）",
+      "tags": ["value", "camera", "performance", "small_screen"],
+      "use_cases": ["主流价位高性能", "日常拍照", "兼顾续航与手感"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-iphone",
+      "specs_url": "https://support.apple.com/zh-cn/123355"
+    },
+    {
+      "id": "iphone-16",
+      "category": "phone",
+      "model": "iPhone 16",
+      "aliases": ["iphone16", "苹果16"],
+      "starting_price_cny": 4999,
+      "price_note": "Apple 中国官网 iPhone 16 系列起售价为 RMB 4,999 起。",
+      "screen_size_inch": 6.1,
+      "chip": "A18",
+      "storage_options_gb": [128, 256, 512],
+      "battery_video_playback_hours": null,
+      "camera_summary": "后置双摄（以官方技术规格页为准）",
+      "tags": ["value", "small_screen", "camera"],
+      "use_cases": ["预算优先", "常规拍照", "轻量游戏与社交"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-iphone",
+      "specs_url": "https://www.apple.com.cn/iphone-16/specs/"
+    },
+    {
+      "id": "iphone-16-plus",
+      "category": "phone",
+      "model": "iPhone 16 Plus",
+      "aliases": ["iphone16plus", "16plus", "苹果16plus"],
+      "starting_price_cny": 4999,
+      "price_note": "Apple 中国官网 iPhone 16 系列起售价为 RMB 4,999 起；16 Plus 具体价格以下单配置页为准。",
+      "screen_size_inch": 6.7,
+      "chip": "A18",
+      "storage_options_gb": [128, 256, 512],
+      "battery_video_playback_hours": null,
+      "camera_summary": "后置双摄（以官方技术规格页为准）",
+      "tags": ["value", "large_screen", "battery"],
+      "use_cases": ["偏好大屏", "长续航需求", "预算敏感"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-iphone",
+      "specs_url": "https://www.apple.com.cn/iphone-16/specs/"
+    },
+    {
+      "id": "iphone-16e",
+      "category": "phone",
+      "model": "iPhone 16e",
+      "aliases": ["iphone16e", "16e", "苹果16e"],
+      "starting_price_cny": 4499,
+      "price_note": "Apple 中国官网起售价 RMB 4,499 起。",
+      "screen_size_inch": 6.1,
+      "chip": "A18",
+      "storage_options_gb": [128, 256, 512],
+      "battery_video_playback_hours": null,
+      "camera_summary": "双摄系统（以官方技术规格页为准）",
+      "tags": ["value", "small_screen"],
+      "use_cases": ["入门预算", "日常通讯与拍照", "轻度使用"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-iphone",
+      "specs_url": "https://www.apple.com.cn/iphone-16e/specs/"
+    },
+    {
+      "id": "ipad-pro-11-m5",
+      "category": "tablet",
+      "model": "11 英寸 iPad Pro (M5)",
+      "aliases": ["ipadpro11m5", "11寸ipadpro", "m5 ipad pro 11"],
+      "starting_price_cny": 8999,
+      "price_note": "Apple 中国官网 iPad Pro 系列起售价为 RMB 8,999 起。",
+      "screen_size_inch": 11.0,
+      "chip": "M5",
+      "storage_options_gb": [256, 512, 1024, 2048],
+      "battery_video_playback_hours": null,
+      "camera_summary": "前后摄像头（以官方技术规格页为准）",
+      "tags": ["performance", "premium", "productivity", "portable"],
+      "use_cases": ["创作与剪辑", "移动办公", "高性能平板需求"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-ipad",
+      "specs_url": "https://support.apple.com/zh-cn/122603"
+    },
+    {
+      "id": "ipad-pro-13-m5",
+      "category": "tablet",
+      "model": "13 英寸 iPad Pro (M5)",
+      "aliases": ["ipadpro13m5", "13寸ipadpro", "m5 ipad pro 13"],
+      "starting_price_cny": 8999,
+      "price_note": "Apple 中国官网 iPad Pro 系列起售价为 RMB 8,999 起；13 英寸具体价格以下单配置页为准。",
+      "screen_size_inch": 13.0,
+      "chip": "M5",
+      "storage_options_gb": [256, 512, 1024, 2048],
+      "battery_video_playback_hours": null,
+      "camera_summary": "前后摄像头（以官方技术规格页为准）",
+      "tags": ["performance", "premium", "productivity", "large_screen"],
+      "use_cases": ["大屏创作", "高强度办公", "专业内容生产"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-ipad",
+      "specs_url": "https://support.apple.com/zh-cn/122604"
+    },
+    {
+      "id": "ipad-air-11-m3",
+      "category": "tablet",
+      "model": "11 英寸 iPad Air (M3)",
+      "aliases": ["ipadair11m3", "11寸ipadair", "m3 ipad air 11"],
+      "starting_price_cny": 4799,
+      "price_note": "Apple 中国官网 iPad Air 系列起售价为 RMB 4,799 起。",
+      "screen_size_inch": 11.0,
+      "chip": "M3",
+      "storage_options_gb": [128, 256, 512, 1024],
+      "battery_video_playback_hours": null,
+      "camera_summary": "前后摄像头（以官方技术规格页为准）",
+      "tags": ["value", "productivity", "portable"],
+      "use_cases": ["学习和笔记", "轻办公", "兼顾性能与预算"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-ipad",
+      "specs_url": "https://support.apple.com/zh-cn/124005"
+    },
+    {
+      "id": "ipad-air-13-m3",
+      "category": "tablet",
+      "model": "13 英寸 iPad Air (M3)",
+      "aliases": ["ipadair13m3", "13寸ipadair", "m3 ipad air 13"],
+      "starting_price_cny": 4799,
+      "price_note": "Apple 中国官网 iPad Air 系列起售价为 RMB 4,799 起；13 英寸具体价格以下单配置页为准。",
+      "screen_size_inch": 13.0,
+      "chip": "M3",
+      "storage_options_gb": [128, 256, 512, 1024],
+      "battery_video_playback_hours": null,
+      "camera_summary": "前后摄像头（以官方技术规格页为准）",
+      "tags": ["value", "productivity", "large_screen"],
+      "use_cases": ["大屏学习与展示", "移动轻办公", "娱乐观影"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-ipad",
+      "specs_url": "https://support.apple.com/zh-cn/124006"
+    },
+    {
+      "id": "ipad-a16",
+      "category": "tablet",
+      "model": "iPad (A16)",
+      "aliases": ["ipada16", "ipad 11代", "基础款ipad"],
+      "starting_price_cny": 2999,
+      "price_note": "Apple 中国官网起售价 RMB 2,999 起。",
+      "screen_size_inch": 11.0,
+      "chip": "A16",
+      "storage_options_gb": [128, 256, 512],
+      "battery_video_playback_hours": null,
+      "camera_summary": "前后摄像头（以官方技术规格页为准）",
+      "tags": ["value", "portable", "education"],
+      "use_cases": ["日常学习", "视频会议", "轻度娱乐"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-ipad",
+      "specs_url": "https://support.apple.com/zh-cn/122910"
+    },
+    {
+      "id": "ipad-mini-a17-pro",
+      "category": "tablet",
+      "model": "iPad mini (A17 Pro)",
+      "aliases": ["ipadmini", "mini7", "ipad mini"],
+      "starting_price_cny": 3999,
+      "price_note": "Apple 中国官网起售价 RMB 3,999 起。",
+      "screen_size_inch": 8.3,
+      "chip": "A17 Pro",
+      "storage_options_gb": [128, 256, 512],
+      "battery_video_playback_hours": null,
+      "camera_summary": "前后摄像头（以官方技术规格页为准）",
+      "tags": ["portable", "value", "performance", "small_screen"],
+      "use_cases": ["便携阅读", "移动游戏", "出行轻办公"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-ipad",
+      "specs_url": "https://www.apple.com.cn/ipad-mini/specs/"
+    },
+    {
+      "id": "macbook-air-m4",
+      "category": "laptop",
+      "model": "MacBook Air (M4)",
+      "aliases": ["macbookairm4", "mba m4", "macbook air"],
+      "starting_price_cny": 8499,
+      "price_note": "Apple 中国官网 MacBook Air 起售价为 RMB 8,499 起。",
+      "screen_size_inch": 13.6,
+      "chip": "M4",
+      "storage_options_gb": [256, 512, 1024, 2048],
+      "battery_video_playback_hours": null,
+      "camera_summary": "1080p 摄像头（以官方技术规格页为准）",
+      "tags": ["portable", "value", "productivity", "battery"],
+      "use_cases": ["通勤办公", "学习开发", "对轻薄和续航有要求"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-mac",
+      "specs_url": "https://support.apple.com/zh-cn/121157"
+    },
+    {
+      "id": "macbook-pro-m5",
+      "category": "laptop",
+      "model": "MacBook Pro (M5)",
+      "aliases": ["macbookprom5", "mbp m5", "macbook pro"],
+      "starting_price_cny": 13499,
+      "price_note": "Apple 中国官网 MacBook Pro 起售价为 RMB 13,499 起。",
+      "screen_size_inch": 14.2,
+      "chip": "M5",
+      "storage_options_gb": [512, 1024, 2048, 4096, 8192],
+      "battery_video_playback_hours": null,
+      "camera_summary": "高清摄像头（以官方技术规格页为准）",
+      "tags": ["performance", "premium", "productivity", "large_screen"],
+      "use_cases": ["视频剪辑与设计", "本地模型开发", "高强度专业工作"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-mac",
+      "specs_url": "https://support.apple.com/zh-cn/130003"
+    },
+    {
+      "id": "apple-watch-series-11",
+      "category": "watch",
+      "model": "Apple Watch Series 11",
+      "aliases": ["watch series 11", "series11", "苹果手表11"],
+      "starting_price_cny": 2999,
+      "price_note": "Apple 中国官网起售价 RMB 2,999 起。",
+      "screen_size_inch": null,
+      "case_size_mm": [42, 46],
+      "chip": null,
+      "storage_options_gb": [],
+      "battery_video_playback_hours": null,
+      "camera_summary": null,
+      "tags": ["fitness", "health", "value"],
+      "use_cases": ["运动记录", "健康监测", "日常消息提醒"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-watch",
+      "specs_url": "https://support.apple.com/zh-cn/130008"
+    },
+    {
+      "id": "apple-watch-se-3",
+      "category": "watch",
+      "model": "Apple Watch SE 3",
+      "aliases": ["watch se 3", "se3", "苹果手表se3"],
+      "starting_price_cny": 2199,
+      "price_note": "Apple 中国官网起售价 RMB 2,199 起。",
+      "screen_size_inch": null,
+      "case_size_mm": [40, 44],
+      "chip": null,
+      "storage_options_gb": [],
+      "battery_video_playback_hours": null,
+      "camera_summary": null,
+      "tags": ["fitness", "health", "value", "portable"],
+      "use_cases": ["入门智能手表", "基础运动健康", "预算敏感场景"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-watch",
+      "specs_url": "https://support.apple.com/zh-cn/130007"
+    },
+    {
+      "id": "apple-watch-ultra-3",
+      "category": "watch",
+      "model": "Apple Watch Ultra 3",
+      "aliases": ["watch ultra 3", "ultra3", "苹果手表ultra3"],
+      "starting_price_cny": 6499,
+      "price_note": "Apple 中国官网起售价 RMB 6,499 起。",
+      "screen_size_inch": null,
+      "case_size_mm": [49],
+      "chip": null,
+      "storage_options_gb": [],
+      "battery_video_playback_hours": null,
+      "camera_summary": null,
+      "tags": ["fitness", "health", "premium", "battery"],
+      "use_cases": ["户外运动", "高强度训练", "长续航需求"],
+      "buy_url": "https://www.apple.com.cn/shop/buy-watch",
+      "specs_url": "https://support.apple.com/zh-cn/130009"
+    }
+  ],
+  "after_sales": {
+    "return_refund": [
+      "通过 Apple Store 在线商店购买的商品，自收货之日起 14 个自然日内可申请退货。",
+      "个性化定制商品、已拆封的软件等场景可能不适用无理由退货，按 Apple 官方条款执行。",
+      "退货退款进度以 Apple 官方订单与支付渠道处理状态为准。"
+    ],
+    "warranty": [
+      "Apple 为主要硬件提供 1 年有限保修。",
+      "Apple 提供 90 天免费电话技术支持。",
+      "在中国大陆销售的产品同时适用国家三包相关规定。"
+    ],
+    "service_flow": [
+      "先提供设备型号、序列号（如有）和故障现象，客服进行初步分流。",
+      "根据故障类型，进入远程排查、到店送修或邮寄维修流程。",
+      "维修或换机进度以 Apple 官方支持和维修系统通知为准。"
+    ],
+    "source_urls": [
+      "https://www.apple.com.cn/shop/help/returns_refund",
+      "https://www.apple.com.cn/legal/statutory-warranty/"
+    ]
+  },
+  "sources": [
+    {
+      "name": "Apple 中国官网 - 购买 iPhone",
+      "url": "https://www.apple.com.cn/shop/buy-iphone"
+    },
+    {
+      "name": "Apple 中国官网 - 购买 iPad",
+      "url": "https://www.apple.com.cn/shop/buy-ipad"
+    },
+    {
+      "name": "Apple 中国官网 - 购买 Mac",
+      "url": "https://www.apple.com.cn/shop/buy-mac"
+    },
+    {
+      "name": "Apple 中国官网 - 购买 Apple Watch",
+      "url": "https://www.apple.com.cn/shop/buy-watch"
+    },
+    {
+      "name": "Apple 支持 - iPhone 技术规格",
+      "url": "https://support.apple.com/zh-cn/123354"
+    },
+    {
+      "name": "Apple 支持 - iPhone 技术规格",
+      "url": "https://support.apple.com/zh-cn/123355"
+    },
+    {
+      "name": "Apple 支持 - iPhone 技术规格",
+      "url": "https://support.apple.com/zh-cn/123356"
+    },
+    {
+      "name": "Apple 支持 - iPhone 技术规格",
+      "url": "https://support.apple.com/zh-cn/123357"
+    },
+    {
+      "name": "Apple 支持 - iPad 技术规格",
+      "url": "https://support.apple.com/zh-cn/122603"
+    },
+    {
+      "name": "Apple 支持 - iPad 技术规格",
+      "url": "https://support.apple.com/zh-cn/122604"
+    },
+    {
+      "name": "Apple 支持 - iPad 技术规格",
+      "url": "https://support.apple.com/zh-cn/124005"
+    },
+    {
+      "name": "Apple 支持 - iPad 技术规格",
+      "url": "https://support.apple.com/zh-cn/124006"
+    },
+    {
+      "name": "Apple 支持 - iPad 技术规格",
+      "url": "https://support.apple.com/zh-cn/122910"
+    },
+    {
+      "name": "Apple 支持 - MacBook Air 技术规格",
+      "url": "https://support.apple.com/zh-cn/121157"
+    },
+    {
+      "name": "Apple 支持 - MacBook Pro 技术规格",
+      "url": "https://support.apple.com/zh-cn/130003"
+    },
+    {
+      "name": "Apple 支持 - Apple Watch 技术规格",
+      "url": "https://support.apple.com/zh-cn/130008"
+    },
+    {
+      "name": "Apple 支持 - Apple Watch 技术规格",
+      "url": "https://support.apple.com/zh-cn/130007"
+    },
+    {
+      "name": "Apple 支持 - Apple Watch 技术规格",
+      "url": "https://support.apple.com/zh-cn/130009"
+    }
+  ]
+}

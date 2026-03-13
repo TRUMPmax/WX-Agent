@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app.kb import KnowledgeBase, extract_text_from_file
 from app.ollama_client import OllamaClient
+from app.product_catalog import ProductCatalog
 from app.wechat import (
     build_encrypted_reply,
     build_text_reply,
@@ -52,6 +53,10 @@ ollama = OllamaClient(
     chat_model=settings.ollama_chat_model,
     embed_model=settings.ollama_embed_model,
     vision_model=settings.ollama_vision_model,
+)
+product_catalog = ProductCatalog(
+    catalog_path=settings.product_catalog_path,
+    enabled=settings.product_catalog_enabled,
 )
 
 event_log_path = Path("data/events.log")
@@ -594,11 +599,23 @@ def _direct_faq_reply(question: str) -> str | None:
     return None
 
 
+def _product_catalog_reply(question: str) -> str | None:
+    if not settings.product_catalog_enabled:
+        return None
+    try:
+        return product_catalog.answer(question)
+    except Exception as exc:
+        _log_event("product_catalog_error", str(exc))
+        return None
+
+
 def _is_business_question(question: str) -> bool:
     q = (question or "").strip()
     if not q:
         return False
     if any(k in q for k in BUSINESS_HINT_KEYWORDS):
+        return True
+    if settings.product_catalog_enabled and product_catalog.is_product_question(q):
         return True
     return _direct_faq_reply(q) is not None
 
@@ -667,6 +684,11 @@ def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[st
     preset = _preset_reply(q)
     if preset:
         yield preset
+        return
+
+    product_reply = _product_catalog_reply(q)
+    if product_reply:
+        yield product_reply
         return
 
     direct_reply = _direct_faq_reply(q)
@@ -738,6 +760,10 @@ def _rag_answer(question: str) -> str:
     if preset:
         return preset
 
+    product_reply = _product_catalog_reply(question)
+    if product_reply:
+        return product_reply
+
     direct_reply = _direct_faq_reply(question)
     if direct_reply:
         return direct_reply
@@ -792,6 +818,11 @@ def _rag_answer_stream_segments(question: str):
     preset = _preset_reply(question)
     if preset:
         yield preset
+        return
+
+    product_reply = _product_catalog_reply(question)
+    if product_reply:
+        yield product_reply
         return
 
     direct_reply = _direct_faq_reply(question)
@@ -1045,6 +1076,7 @@ def _on_shutdown() -> None:
 
 @app.get("/healthz")
 def healthz() -> dict:
+    catalog_stats = product_catalog.stats()
     return {
         "ok": True,
         "kb_source_dir": str(Path(settings.kb_source_dir).resolve()),
@@ -1053,6 +1085,11 @@ def healthz() -> dict:
         "kb_sync_interval_sec": settings.kb_sync_interval_sec,
         "wechat_async_stream_reply": settings.wechat_async_stream_reply,
         "general_fallback_enabled": settings.general_fallback_enabled,
+        "product_catalog_enabled": settings.product_catalog_enabled,
+        "product_catalog_path": settings.product_catalog_path,
+        "product_catalog_loaded": bool(catalog_stats.get("loaded")),
+        "product_catalog_products": int(catalog_stats.get("product_count", 0) or 0),
+        "product_catalog_verified_on": str(catalog_stats.get("verified_on", "")),
         "chat_session_ttl_sec": settings.chat_session_ttl_sec,
         "chat_session_max_turns": settings.chat_session_max_turns,
         "chat_session_cleanup_sec": settings.chat_session_cleanup_sec,
