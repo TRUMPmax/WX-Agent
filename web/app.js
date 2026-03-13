@@ -4,9 +4,12 @@ const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const quickButtons = document.querySelectorAll(".quick");
 const titleEl = document.getElementById("chatTitle");
+const subtitleEl = document.getElementById("chatSubtitle");
+const providerEl = document.getElementById("modelProvider");
 
 const SESSION_ID_KEY = "wx_agent_session_id";
 const SESSION_TOUCH_KEY = "wx_agent_session_touch";
+const MODEL_PROVIDER_KEY = "wx_agent_model_provider";
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 
 let busy = false;
@@ -58,6 +61,7 @@ function setBusy(nextBusy) {
   busy = nextBusy;
   sendBtn.disabled = nextBusy;
   inputEl.disabled = nextBusy;
+  if (providerEl) providerEl.disabled = nextBusy;
 }
 
 function parseSSE(buffer) {
@@ -72,15 +76,90 @@ function parseSSE(buffer) {
       if (line.startsWith("event:")) event = line.slice(6).trim();
       if (line.startsWith("data:")) data += line.slice(5).trim();
     }
-    if (data) {
-      try {
-        events.push({ event, data: JSON.parse(data) });
-      } catch (_) {
-        events.push({ event, data: { text: data } });
-      }
+    if (!data) continue;
+    try {
+      events.push({ event, data: JSON.parse(data) });
+    } catch (_) {
+      events.push({ event, data: { text: data } });
     }
   }
   return { events, rest };
+}
+
+function selectedProvider() {
+  if (!providerEl || !providerEl.value) return "ollama";
+  return providerEl.value;
+}
+
+function updateProviderBadge(providerLabel) {
+  if (!subtitleEl) return;
+  if (providerLabel) {
+    subtitleEl.textContent = `当前模型：${providerLabel}（流式回复）`;
+    return;
+  }
+  subtitleEl.textContent = "当前为流式回复模式";
+}
+
+function setProviderSelection(providerId) {
+  if (!providerEl || !providerId) return;
+  const option = Array.from(providerEl.options).find((op) => op.value === providerId && !op.disabled);
+  if (!option) return;
+  providerEl.value = providerId;
+  localStorage.setItem(MODEL_PROVIDER_KEY, providerId);
+}
+
+function fillProviderOptions(meta) {
+  if (!providerEl) return;
+  providerEl.innerHTML = "";
+
+  const items = Array.isArray(meta?.items) ? meta.items : [];
+  if (!items.length) {
+    const op = document.createElement("option");
+    op.value = "ollama";
+    op.textContent = "Qwen 本地模型";
+    providerEl.appendChild(op);
+    providerEl.value = "ollama";
+    localStorage.setItem(MODEL_PROVIDER_KEY, "ollama");
+    updateProviderBadge(op.textContent);
+    return;
+  }
+
+  for (const item of items) {
+    const op = document.createElement("option");
+    op.value = item.id;
+    op.disabled = item.available === false;
+    op.textContent = item.available === false ? `${item.label}（不可用）` : item.label;
+    providerEl.appendChild(op);
+  }
+
+  const saved = localStorage.getItem(MODEL_PROVIDER_KEY) || "";
+  const next = saved || meta.default || "ollama";
+  setProviderSelection(next);
+
+  if (!providerEl.value) {
+    const firstEnabled = Array.from(providerEl.options).find((op) => !op.disabled);
+    if (firstEnabled) providerEl.value = firstEnabled.value;
+  }
+
+  if (providerEl.value) {
+    localStorage.setItem(MODEL_PROVIDER_KEY, providerEl.value);
+    const currentOption = providerEl.options[providerEl.selectedIndex];
+    updateProviderBadge(currentOption ? currentOption.textContent.replace("（不可用）", "") : "");
+  }
+}
+
+async function loadProviders() {
+  try {
+    const resp = await fetch("/api/model-providers", { method: "GET" });
+    if (!resp.ok) throw new Error("provider api failed");
+    const data = await resp.json();
+    fillProviderOptions(data);
+  } catch (_) {
+    fillProviderOptions({
+      items: [{ id: "ollama", label: "Qwen 本地模型", available: true }],
+      default: "ollama",
+    });
+  }
 }
 
 async function ask(message) {
@@ -89,12 +168,13 @@ async function ask(message) {
   addMessage("user", message);
   const assistant = addMessage("assistant", "", true);
   const sessionId = getSessionId();
+  const provider = selectedProvider();
 
   try {
     const resp = await fetch("/api/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, session_id: sessionId }),
+      body: JSON.stringify({ message, session_id: sessionId, model_provider: provider }),
     });
 
     if (!resp.ok || !resp.body) {
@@ -124,10 +204,14 @@ async function ask(message) {
             if (titleEl) titleEl.textContent = nextTitle;
           }
           if (evt.data.session_id) updateSessionId(evt.data.session_id);
+          if (evt.data.model_provider) setProviderSelection(evt.data.model_provider);
+          if (evt.data.model_provider_label) updateProviderBadge(evt.data.model_provider_label);
         } else if (evt.event === "error") {
           assistant.textContent = evt.data.message || "服务异常，请稍后重试。";
         } else if (evt.event === "done") {
           if (evt.data.session_id) updateSessionId(evt.data.session_id);
+          if (evt.data.model_provider) setProviderSelection(evt.data.model_provider);
+          if (evt.data.model_provider_label) updateProviderBadge(evt.data.model_provider_label);
           if (!assistant.textContent.trim()) {
             assistant.textContent = evt.data.answer || "已处理完成。";
           }
@@ -161,6 +245,15 @@ inputEl.addEventListener("keydown", (e) => {
   }
 });
 
+if (providerEl) {
+  providerEl.addEventListener("change", () => {
+    if (!providerEl.value) return;
+    localStorage.setItem(MODEL_PROVIDER_KEY, providerEl.value);
+    const currentOption = providerEl.options[providerEl.selectedIndex];
+    updateProviderBadge(currentOption ? currentOption.textContent.replace("（不可用）", "") : "");
+  });
+}
+
 for (const btn of quickButtons) {
   btn.addEventListener("click", () => {
     const q = btn.getAttribute("data-q");
@@ -169,4 +262,5 @@ for (const btn of quickButtons) {
 }
 
 getSessionId();
+loadProviders();
 addMessage("assistant", "你好，我是 WX Agent。你可以直接输入问题，我会基于知识库实时回复。");

@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Accept UTF-8 BOM in .env so the first key is parsed correctly.
+load_dotenv(encoding="utf-8-sig")
 
 
 def _as_bool(value: str, default: bool = False) -> bool:
@@ -24,7 +25,10 @@ class Settings:
     wechat_async_stream_reply: bool = _as_bool(os.getenv("WECHAT_ASYNC_STREAM_REPLY", "0"), default=False)
     web_chat_url: str = os.getenv("WEB_CHAT_URL", "").strip()
     web_chat_title: str = os.getenv("WEB_CHAT_TITLE", "WX Agent 智能客服").strip()
+    web_default_model_provider: str = os.getenv("WEB_DEFAULT_MODEL_PROVIDER", "ollama").strip().lower()
     general_fallback_enabled: bool = _as_bool(os.getenv("GENERAL_FALLBACK_ENABLED", "1"), default=True)
+    direct_faq_llm_enabled: bool = _as_bool(os.getenv("DIRECT_FAQ_LLM_ENABLED", "1"), default=True)
+    direct_faq_llm_timeout_sec: float = float(os.getenv("DIRECT_FAQ_LLM_TIMEOUT_SEC", "12"))
     product_catalog_enabled: bool = _as_bool(os.getenv("PRODUCT_CATALOG_ENABLED", "1"), default=True)
     product_catalog_path: str = os.getenv("PRODUCT_CATALOG_PATH", "./catalog/apple_cn_devices.json").strip()
     product_catalog_llm_enabled: bool = _as_bool(os.getenv("PRODUCT_CATALOG_LLM_ENABLED", "1"), default=True)
@@ -38,6 +42,10 @@ class Settings:
     ollama_chat_model: str = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:14b")
     ollama_embed_model: str = os.getenv("OLLAMA_EMBED_MODEL", "qwen3:14b")
     ollama_vision_model: str = os.getenv("OLLAMA_VISION_MODEL", "").strip()
+    deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip()
+    deepseek_chat_model: str = os.getenv("DEEPSEEK_CHAT_MODEL", "deepseek-chat").strip()
+    deepseek_timeout_sec: float = float(os.getenv("DEEPSEEK_TIMEOUT_SEC", "90"))
     kb_db_path: str = os.getenv("KB_DB_PATH", "./data/kb.sqlite3")
     kb_source_dir: str = os.getenv("KB_SOURCE_DIR", "./kb_source")
     kb_auto_sync_on_start: bool = _as_bool(os.getenv("KB_AUTO_SYNC_ON_START", "1"), default=True)

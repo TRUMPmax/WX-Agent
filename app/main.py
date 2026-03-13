@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import uuid
-from typing import Iterator
+from typing import Any, Iterator
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import settings
+from app.deepseek_client import DeepSeekClient
 from app.kb import KnowledgeBase, extract_text_from_file
 from app.ollama_client import OllamaClient
 from app.product_catalog import ProductCatalog
@@ -54,10 +55,23 @@ ollama = OllamaClient(
     embed_model=settings.ollama_embed_model,
     vision_model=settings.ollama_vision_model,
 )
+deepseek: DeepSeekClient | None = None
+if settings.deepseek_api_key:
+    deepseek = DeepSeekClient(
+        api_key=settings.deepseek_api_key,
+        base_url=settings.deepseek_base_url,
+        chat_model=settings.deepseek_chat_model,
+        timeout_sec=settings.deepseek_timeout_sec,
+    )
 product_catalog = ProductCatalog(
     catalog_path=settings.product_catalog_path,
     enabled=settings.product_catalog_enabled,
 )
+
+PROVIDER_LABELS = {
+    "ollama": "Qwen 本地模型",
+    "deepseek": "DeepSeek 云端模型",
+}
 
 event_log_path = Path("data/events.log")
 event_log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,6 +107,32 @@ def _admin_guard(x_admin_token: str | None) -> None:
 class WebChatRequest(BaseModel):
     message: str
     session_id: str | None = None
+    model_provider: str | None = None
+
+
+def _provider_label(provider: str) -> str:
+    return PROVIDER_LABELS.get(provider, provider)
+
+
+def _provider_available(provider: str) -> bool:
+    if provider == "deepseek":
+        return bool(deepseek and deepseek.available)
+    return provider == "ollama"
+
+
+def _resolve_provider(preferred: str | None = None) -> str:
+    provider = (preferred or settings.web_default_model_provider or "ollama").strip().lower()
+    if provider not in {"ollama", "deepseek"}:
+        provider = "ollama"
+    if not _provider_available(provider):
+        provider = "ollama"
+    return provider
+
+
+def _chat_client_for_provider(provider: str):
+    if provider == "deepseek" and deepseek and deepseek.available:
+        return deepseek
+    return ollama
 
 
 def _normalize_session_id(raw: str | None) -> str:
@@ -609,18 +649,17 @@ BUSINESS_HINT_KEYWORDS = {
 }
 
 
-def _direct_faq_reply(question: str) -> str | None:
+def _match_direct_faq_item(question: str) -> dict[str, object] | None:
     q = (question or "").strip().lower()
     if not q:
         return None
-    best_reply: str | None = None
+    best_item: dict[str, object] | None = None
     best_pattern_len = -1
     for item in DIRECT_FAQ_ITEMS:
         patterns = item.get("patterns", [])
         if not isinstance(patterns, list):
             continue
-        reply = str(item.get("reply", "")).strip()
-        if not reply:
+        if not str(item.get("reply", "")).strip():
             continue
         for raw_pattern in patterns:
             pattern = str(raw_pattern or "").strip().lower()
@@ -629,8 +668,81 @@ def _direct_faq_reply(question: str) -> str | None:
             # Prefer more specific matches (e.g. "优惠券") over broad words (e.g. "优惠").
             if len(pattern) > best_pattern_len:
                 best_pattern_len = len(pattern)
-                best_reply = reply
-    return best_reply
+                best_item = item
+    return best_item
+
+
+def _build_faq_llm_prompt(question: str, item: dict[str, object], recent_messages: list[dict] | None) -> str:
+    title = str(item.get("title", "")).strip() or "常见咨询"
+    base_reply = str(item.get("reply", "")).strip()
+    history_rows: list[str] = []
+    if recent_messages:
+        for msg in reversed(recent_messages):
+            if str(msg.get("role", "")) != "user":
+                continue
+            text = str(msg.get("content", "")).strip()
+            if not text:
+                continue
+            history_rows.append(text[:180])
+            if len(history_rows) >= 2:
+                break
+    history_rows.reverse()
+    history_block = "\n".join(history_rows)
+    return (
+        "你是中文电商客服。\n"
+        "请基于“已知政策要点”回答用户，不要照抄原句，要自然、专业、可执行。\n"
+        "要求：\n"
+        "1) 优先直接回答用户问题，再给 1-2 条下一步建议；\n"
+        "2) 不得编造政策、价格、时效；不确定时明确写“以页面/官方规则为准”；\n"
+        "3) 控制在 80-180 字；\n"
+        "4) 不输出推理过程。\n\n"
+        f"咨询主题：{title}\n"
+        f"同一会话用户历史：\n{history_block}\n\n"
+        f"已知政策要点：\n{base_reply}\n\n"
+        f"用户问题：{question}\n\n"
+        "请直接输出可发送给用户的最终回复："
+    )
+
+
+def _is_faq_llm_answer_usable(answer: str) -> bool:
+    text = (answer or "").strip()
+    if len(text) < 22:
+        return False
+    if text[-1] not in "。！？.!?":
+        return False
+    if "我无法" in text and "建议" not in text:
+        return False
+    return True
+
+
+def _direct_faq_reply(
+    question: str,
+    recent_messages: list[dict] | None = None,
+    llm_client: Any | None = None,
+) -> str | None:
+    item = _match_direct_faq_item(question)
+    if not item:
+        return None
+    fallback = str(item.get("reply", "")).strip()
+    if not fallback:
+        return None
+    if not settings.direct_faq_llm_enabled:
+        return fallback
+
+    prompt = _build_faq_llm_prompt(question, item, recent_messages)
+    client = llm_client or ollama
+    try:
+        answer = client.chat(prompt, timeout_sec=max(4.0, settings.direct_faq_llm_timeout_sec)).strip()
+    except Exception as exc:
+        _log_event("direct_faq_llm_fallback", f"reason=exception err={exc}")
+        return fallback
+    answer = _strip_think_blocks(answer).strip()
+    if not answer:
+        return fallback
+    if not _is_faq_llm_answer_usable(answer):
+        _log_event("direct_faq_llm_fallback", "reason=quality_gate")
+        return fallback
+    return answer
 
 
 def _format_catalog_profile(profile: dict) -> str:
@@ -673,11 +785,20 @@ def _build_catalog_llm_prompt(question: str, resolved: dict, recent_messages: li
             screen_text = f"{screen}英寸" if isinstance(screen, (int, float)) else "未知"
             storage = c.get("storage_options", [])
             storage_text = "/".join(f"{int(v)}GB" for v in storage if isinstance(v, int)) if isinstance(storage, list) else ""
+            battery = c.get("battery_video_playback_hours")
+            battery_text = f"{int(battery)}小时视频播放" if isinstance(battery, int) else "未标注"
+            camera_summary = str(c.get("camera_summary", "")).strip()
+            use_cases = c.get("use_cases", [])
+            use_case_text = "；".join(str(x) for x in use_cases[:3]) if isinstance(use_cases, list) else ""
+            price_note = str(c.get("price_note", "")).strip()
             pros = c.get("pros", [])
             cons = c.get("cons", [])
             reasons = c.get("reasons", [])
             rows.append(
-                f"{idx}. {model} | {price} | 屏幕:{screen_text} | 芯片:{chip or '未知'} | 容量:{storage_text or '未知'} | 优点:{';'.join(str(x) for x in pros[:2])} | 不足:{';'.join(str(x) for x in cons[:2])} | 命中:{';'.join(str(x) for x in reasons[:2])}"
+                f"{idx}. {model} | {price} | 屏幕:{screen_text} | 芯片:{chip or '未知'} | 容量:{storage_text or '未知'}"
+                f" | 续航:{battery_text} | 影像:{camera_summary or '未标注'} | 场景:{use_case_text or '未标注'}"
+                f" | 价格备注:{price_note or '无'} | 优点:{';'.join(str(x) for x in pros[:2])}"
+                f" | 不足:{';'.join(str(x) for x in cons[:2])} | 命中:{';'.join(str(x) for x in reasons[:2])}"
             )
     history_rows: list[str] = []
     if recent_messages:
@@ -694,7 +815,17 @@ def _build_catalog_llm_prompt(question: str, resolved: dict, recent_messages: li
     history_rows.reverse()
     history_block = "\n".join(history_rows)
 
-    if mode == "compare":
+    if mode == "detail":
+        task = (
+            "你是中文电商客服。用户在问某一款产品详情。\n"
+            "请输出：\n"
+            "1) 先给一句总评（适不适合当前问题）；\n"
+            "2) 再说 2-3 个关键点（价格/性能/影像/续航/便携）；\n"
+            "3) 明确 1 条优点和 1 条注意点；\n"
+            "4) 语气自然，80-180 字；\n"
+            "5) 只可使用候选中给出的参数，不得编造。"
+        )
+    elif mode == "compare":
         task = (
             "你是中文电商客服。用户在做同类机型对比。\n"
             "请输出：\n"
@@ -733,34 +864,14 @@ def _build_catalog_llm_prompt(question: str, resolved: dict, recent_messages: li
 
 def _is_catalog_llm_answer_usable(answer: str, resolved: dict) -> bool:
     text = (answer or "").strip()
-    if len(text) < 24:
-        return False
-    if text[-1] not in "。！？.!?":
-        return False
-    candidates = resolved.get("candidates", [])
-    model_names = []
-    if isinstance(candidates, list):
-        for row in candidates[:3]:
-            if not isinstance(row, dict):
-                continue
-            model = str(row.get("model", "")).strip()
-            if model:
-                model_names.append(model)
-    if model_names and not any(name in text for name in model_names):
-        return False
-    profile = resolved.get("profile", {})
-    has_budget_input = False
-    if isinstance(profile, dict):
-        has_budget_input = isinstance(profile.get("min_budget"), int) or isinstance(profile.get("max_budget"), int)
-    if not has_budget_input:
-        question = str(resolved.get("question", "")).strip()
-        has_budget_input = bool(re.search(r"(预算|价位|价格|多少钱).{0,12}\d", question))
-    if not has_budget_input and re.search(r"预算[^。；\n]{0,12}\d", text):
-        return False
-    return True
+    return len(text) >= 24
 
 
-def _product_catalog_reply(question: str, recent_messages: list[dict] | None = None) -> str | None:
+def _product_catalog_reply(
+    question: str,
+    recent_messages: list[dict] | None = None,
+    llm_client: Any | None = None,
+) -> str | None:
     if not settings.product_catalog_enabled:
         return None
     try:
@@ -784,8 +895,9 @@ def _product_catalog_reply(question: str, recent_messages: list[dict] | None = N
         return fallback
 
     prompt = _build_catalog_llm_prompt(question, resolved, recent_messages)
+    client = llm_client or ollama
     try:
-        answer = ollama.chat(prompt, timeout_sec=max(6.0, settings.product_catalog_llm_timeout_sec)).strip()
+        answer = client.chat(prompt, timeout_sec=max(6.0, settings.product_catalog_llm_timeout_sec)).strip()
     except Exception as exc:
         _log_event("product_catalog_llm_fallback", f"reason=exception err={exc}")
         return fallback
@@ -807,7 +919,7 @@ def _is_business_question(question: str) -> bool:
         return True
     if settings.product_catalog_enabled and product_catalog.is_product_question(q):
         return True
-    return _direct_faq_reply(q) is not None
+    return _match_direct_faq_item(q) is not None
 
 
 def _build_general_fallback_prompt(question: str, history_text: str = "") -> str:
@@ -825,13 +937,19 @@ def _build_general_fallback_prompt(question: str, history_text: str = "") -> str
     )
 
 
-def _general_model_stream(question: str, timeout_sec: float = 60, history_text: str = "") -> Iterator[str]:
+def _general_model_stream(
+    question: str,
+    timeout_sec: float = 60,
+    history_text: str = "",
+    llm_client: Any | None = None,
+) -> Iterator[str]:
     prompt = _build_general_fallback_prompt(question, history_text=history_text)
+    client = llm_client or ollama
     raw = ""
     sent_len = 0
     emitted = False
     try:
-        for delta in ollama.chat_stream(prompt, timeout_sec=timeout_sec):
+        for delta in client.chat_stream(prompt, timeout_sec=timeout_sec):
             if not delta:
                 continue
             raw += delta
@@ -854,20 +972,26 @@ def _general_model_stream(question: str, timeout_sec: float = 60, history_text: 
 
 def _general_model_answer(question: str, timeout_sec: float = 60, history_text: str = "") -> str:
     prompt = _build_general_fallback_prompt(question, history_text=history_text)
+    client = ollama
     try:
-        answer = ollama.chat(prompt, timeout_sec=timeout_sec).strip()
+        answer = client.chat(prompt, timeout_sec=timeout_sec).strip()
     except Exception:
         return ""
     answer = _strip_think_blocks(answer).strip()
     return answer
 
 
-def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[str]:
+def _web_rag_stream(
+    question: str,
+    session_id: str | None = None,
+    llm_client: Any | None = None,
+) -> Iterator[str]:
     q = (question or "").strip()
     if not q:
         yield "请先输入你的问题，我会尽快帮你处理。"
         return
 
+    client = llm_client or ollama
     sid = _normalize_session_id(session_id)
     recent_messages = _session_get_recent_messages(sid)
     history_text = _render_session_history(recent_messages)
@@ -877,12 +1001,12 @@ def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[st
         yield preset
         return
 
-    product_reply = _product_catalog_reply(q, recent_messages=recent_messages)
+    product_reply = _product_catalog_reply(q, recent_messages=recent_messages, llm_client=client)
     if product_reply:
         yield product_reply
         return
 
-    direct_reply = _direct_faq_reply(q)
+    direct_reply = _direct_faq_reply(q, recent_messages=recent_messages, llm_client=client)
     if direct_reply:
         yield direct_reply
         return
@@ -893,7 +1017,7 @@ def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[st
         _log_event("kb_miss", f"reason=no_hits q={q[:120]}")
         if settings.general_fallback_enabled and not _is_business_question(q):
             emitted = False
-            for piece in _general_model_stream(q, timeout_sec=75, history_text=history_text):
+            for piece in _general_model_stream(q, timeout_sec=75, history_text=history_text, llm_client=client):
                 emitted = True
                 yield piece
             if emitted:
@@ -905,7 +1029,7 @@ def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[st
         _log_event("kb_miss", f"reason=low_relevance q={q[:120]}")
         if settings.general_fallback_enabled and not _is_business_question(q):
             emitted = False
-            for piece in _general_model_stream(q, timeout_sec=75, history_text=history_text):
+            for piece in _general_model_stream(q, timeout_sec=75, history_text=history_text, llm_client=client):
                 emitted = True
                 yield piece
             if emitted:
@@ -918,7 +1042,7 @@ def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[st
     raw = ""
     sent_len = 0
     try:
-        for delta in ollama.chat_stream(prompt, timeout_sec=180):
+        for delta in client.chat_stream(prompt, timeout_sec=180):
             if not delta:
                 continue
             raw += delta
@@ -1276,6 +1400,8 @@ def healthz() -> dict:
         "kb_sync_interval_sec": settings.kb_sync_interval_sec,
         "wechat_async_stream_reply": settings.wechat_async_stream_reply,
         "general_fallback_enabled": settings.general_fallback_enabled,
+        "direct_faq_llm_enabled": settings.direct_faq_llm_enabled,
+        "direct_faq_llm_timeout_sec": settings.direct_faq_llm_timeout_sec,
         "product_catalog_enabled": settings.product_catalog_enabled,
         "product_catalog_path": settings.product_catalog_path,
         "product_catalog_llm_enabled": settings.product_catalog_llm_enabled,
@@ -1290,8 +1416,11 @@ def healthz() -> dict:
         "active_chat_sessions": _active_session_count(),
         "web_chat_url": settings.web_chat_url,
         "web_chat_title": settings.web_chat_title,
+        "web_default_model_provider": _resolve_provider(settings.web_default_model_provider),
         "ollama_chat_model": settings.ollama_chat_model,
         "ollama_embed_model": settings.ollama_embed_model,
+        "deepseek_enabled": bool(deepseek and deepseek.available),
+        "deepseek_chat_model": settings.deepseek_chat_model if deepseek and deepseek.available else "",
         "chunk_overlap_chars": settings.chunk_overlap_chars,
         "retrieval_candidates": settings.retrieval_candidates,
         "hybrid_dense_weight": settings.hybrid_dense_weight,
@@ -1326,38 +1455,79 @@ def api_faq_list() -> dict:
     return {"ok": True, "items": items}
 
 
+@app.get("/api/model-providers")
+def api_model_providers() -> dict:
+    items = []
+    for provider in ("ollama", "deepseek"):
+        items.append(
+            {
+                "id": provider,
+                "label": _provider_label(provider),
+                "available": _provider_available(provider),
+            }
+        )
+    selected = _resolve_provider(settings.web_default_model_provider)
+    return {"ok": True, "default": selected, "items": items}
+
+
 @app.post("/api/chat")
 def api_chat(req: WebChatRequest) -> dict:
     q = (req.message or "").strip()
     if not q:
         raise HTTPException(status_code=400, detail="message is required")
+    provider = _resolve_provider(req.model_provider)
+    client = _chat_client_for_provider(provider)
     sid = _ensure_session_id(req.session_id)
-    chunks = list(_web_rag_stream(q, session_id=sid))
+    chunks = list(_web_rag_stream(q, session_id=sid, llm_client=client))
     answer = "".join(chunks).strip()
     if answer:
         _session_append_turn(sid, q, answer)
-    return {"ok": True, "answer": answer, "session_id": sid}
+    return {
+        "ok": True,
+        "answer": answer,
+        "session_id": sid,
+        "model_provider": provider,
+        "model_provider_label": _provider_label(provider),
+    }
 
 
 @app.post("/api/chat/stream")
 def api_chat_stream(req: WebChatRequest) -> StreamingResponse:
     q = (req.message or "").strip()
     sid = _ensure_session_id(req.session_id)
+    provider = _resolve_provider(req.model_provider)
+    client = _chat_client_for_provider(provider)
 
     def _iter():
         if not q:
             yield _sse("error", {"message": "message is required"})
             yield _sse("done", {"answer": ""})
             return
-        yield _sse("meta", {"title": settings.web_chat_title, "session_id": sid})
+        yield _sse(
+            "meta",
+            {
+                "title": settings.web_chat_title,
+                "session_id": sid,
+                "model_provider": provider,
+                "model_provider_label": _provider_label(provider),
+            },
+        )
         full = ""
-        for chunk in _web_rag_stream(q, session_id=sid):
+        for chunk in _web_rag_stream(q, session_id=sid, llm_client=client):
             full += chunk
             yield _sse("chunk", {"text": chunk})
         answer = full.strip()
         if answer:
             _session_append_turn(sid, q, answer)
-        yield _sse("done", {"answer": answer, "session_id": sid})
+        yield _sse(
+            "done",
+            {
+                "answer": answer,
+                "session_id": sid,
+                "model_provider": provider,
+                "model_provider_label": _provider_label(provider),
+            },
+        )
 
     headers = {
         "Cache-Control": "no-cache",

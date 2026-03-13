@@ -370,10 +370,10 @@ class ProductCatalog:
                 "mode": "detail",
                 "question": q,
                 "reply": self._build_product_detail_reply(product),
-                "profile": {},
+                "profile": profile,
                 "candidates": [self._candidate_from_product(product, score=0.0, reasons=["命中具体机型"])],
                 "category": str(product.get("category", "")),
-                "needs_llm": False,
+                "needs_llm": True,
             }
 
         if self._looks_like_recommendation_with_profile(q, profile):
@@ -990,6 +990,7 @@ class ProductCatalog:
         ]
         screen_size = product.get("screen_size_inch")
         screen_value = float(screen_size) if isinstance(screen_size, (int, float)) else None
+        battery_hours = _as_int(product.get("battery_video_playback_hours"))
         return {
             "id": str(product.get("id", "")),
             "model": str(product.get("model", "")),
@@ -1000,6 +1001,8 @@ class ProductCatalog:
             "chip": str(product.get("chip", "")).strip(),
             "screen_size": screen_value,
             "storage_options": storage_options,
+            "battery_video_playback_hours": battery_hours,
+            "camera_summary": str(product.get("camera_summary", "")).strip(),
             "use_cases": [
                 str(x)
                 for x in (
@@ -1229,7 +1232,22 @@ class ProductCatalog:
 
     def _build_rich_recommendation_reply(self, candidates: list[dict[str, Any]], profile: dict[str, Any]) -> str:
         primary = self._choose_primary(candidates, profile)
-        backup = candidates[1] if len(candidates) > 1 else None
+        ordered: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        if primary:
+            pid = str(primary.get("id", "")).strip() or str(primary.get("model", "")).strip()
+            if pid:
+                seen.add(pid)
+            ordered.append(primary)
+        for row in candidates:
+            pid = str(row.get("id", "")).strip() or str(row.get("model", "")).strip()
+            if pid and pid in seen:
+                continue
+            if pid:
+                seen.add(pid)
+            ordered.append(row)
+
+        backup = ordered[1] if len(ordered) > 1 else None
         need_summary = self._user_need_summary(profile)
         verified_on = str(self._state.meta.get("verified_on", "")).strip()
 
@@ -1251,8 +1269,8 @@ class ProductCatalog:
             use_case = "; ".join(backup.get("use_cases", [])[:2]) or "预算或屏幕偏好不同时更合适"
             lines.append(f"更适合：{use_case}")
 
-        if len(candidates) > 2:
-            third = candidates[2]
+        if len(ordered) > 2:
+            third = ordered[2]
             lines.append(
                 f"第三选择：{third.get('model')}（{third.get('price_text')}），优势是 {'；'.join(third.get('pros', [])[:1])}"
             )

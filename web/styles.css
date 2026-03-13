@@ -143,27 +143,65 @@ body {
   padding: 0.95rem 1rem;
   border-bottom: 1px solid var(--line);
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.9rem;
 }
 
-.chat-header strong {
+.chat-header-left {
+  min-width: 0;
+}
+
+.chat-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chat-title-row strong {
   display: block;
   font-size: 0.95rem;
+  line-height: 1.2;
 }
 
-.chat-header span {
+#chatSubtitle {
+  display: block;
   color: var(--muted);
   font-size: 0.82rem;
+  margin-top: 0.28rem;
 }
 
 .status-dot {
   width: 10px;
   height: 10px;
+  min-width: 10px;
   border-radius: 999px;
   background: #16b581;
-  box-shadow: 0 0 0 6px rgba(22, 181, 129, 0.16);
+  box-shadow: 0 0 0 5px rgba(22, 181, 129, 0.16);
   animation: pulse 1.9s infinite;
+}
+
+.chat-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.28rem;
+}
+
+.chat-header-right label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+}
+
+.chat-header-right select {
+  border-radius: 10px;
+  border: 1px solid rgba(10, 80, 63, 0.24);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text);
+  font: 500 0.85rem/1.2 "Noto Sans SC", sans-serif;
+  padding: 0.42rem 0.56rem;
+  min-width: 170px;
 }
 
 @keyframes pulse {
@@ -279,6 +317,21 @@ body {
   .chat-panel {
     order: 1;
     min-height: 70vh;
+  }
+
+  .chat-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chat-header-right {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .chat-header-right select {
+    width: 100%;
+    min-width: 0;
   }
 
   .msg {

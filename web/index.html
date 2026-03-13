@@ -25,23 +25,30 @@
         <button class="quick" data-q="售后处理建议">售后处理建议</button>
       </div>
       <div class="panel-note">
-        <p>提示：请尽量描述商品名、订单号或具体场景，回复会更准确。</p>
+        <p>提示：尽量描述商品名称、订单号或具体场景，回复会更准确。</p>
       </div>
     </aside>
 
     <main class="chat-panel">
       <header class="chat-header">
-        <div class="status-dot"></div>
-        <div>
-          <strong id="chatTitle">WX Agent 在线客服</strong>
-          <span>当前为流式回复模式</span>
+        <div class="chat-header-left">
+          <div class="chat-title-row">
+            <span class="status-dot" aria-hidden="true"></span>
+            <strong id="chatTitle">WX Agent 在线客服</strong>
+          </div>
+          <span id="chatSubtitle">当前为流式回复模式</span>
+        </div>
+
+        <div class="chat-header-right">
+          <label for="modelProvider">回复模型</label>
+          <select id="modelProvider" aria-label="选择模型"></select>
         </div>
       </header>
 
       <section id="messages" class="messages"></section>
 
       <form id="composer" class="composer">
-        <textarea id="input" placeholder="请输入你的问题，支持连续追问…" rows="1"></textarea>
+        <textarea id="input" placeholder="请输入你的问题，支持连续追问..." rows="1"></textarea>
         <button id="send" type="submit">发送</button>
       </form>
     </main>
