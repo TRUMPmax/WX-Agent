@@ -319,6 +319,69 @@ def _resolve_web_chat_url(request: Request | None = None) -> str:
     return "/chat"
 
 
+def _trim_wechat_text(text: str, limit: int = 480) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip(",.!?;: ") + "..."
+
+
+def _wechat_handoff_reply(web_url: str) -> str:
+    return (
+        "\u60a8\u597d\uff0c\u5df2\u6536\u5230\u60a8\u7684\u54a8\u8be2\u3002"
+        "\u4e3a\u7ed9\u60a8\u66f4\u5b8c\u6574\u3001\u8fde\u7eed\u7684\u56de\u590d\uff0c"
+        "\u8bf7\u8fdb\u5165\u7f51\u9875\u5ba2\u670d\u7ee7\u7eed\u6c9f\u901a\uff1a\n"
+        f"{web_url}\n"
+        "\u8fdb\u5165\u540e\u53ef\u76f4\u63a5\u63d0\u95ee\uff0c\u6211\u4f1a\u5b9e\u65f6\u56de\u590d\u3002"
+    )
+
+
+def _wechat_try_quick_answer(question: str) -> tuple[str | None, str]:
+    q = (question or "").strip()
+    if not q:
+        return None, "empty"
+
+    preset = _preset_reply(q)
+    if preset:
+        return _trim_wechat_text(preset), "preset"
+
+    item = _match_direct_faq_item(q)
+    if item:
+        direct = str(item.get("reply", "")).strip()
+        if direct:
+            return _trim_wechat_text(direct), "direct_faq"
+
+    if settings.product_catalog_enabled:
+        try:
+            resolved = product_catalog.resolve(q)
+        except Exception as exc:
+            _log_event("wechat_quick_product_error", str(exc))
+            resolved = None
+        if resolved:
+            catalog_reply = str(resolved.get("reply", "")).strip()
+            if catalog_reply:
+                return _trim_wechat_text(catalog_reply), "product_catalog"
+
+    tokens = [t.strip().lower() for t in KnowledgeBase._tokenize_text(q) if len((t or "").strip()) >= 2][:8]
+    if not tokens:
+        return None, "miss"
+
+    hits = kb.search(q, top_k=max(settings.top_k, 3), ollama=ollama)
+    if hits:
+        source_name = str(hits[0].get("source_name", "")).strip()
+        # Skip generic fallback docs to avoid answering every query with the same template.
+        if "\u672a\u7406\u89e3" in source_name:
+            return None, "miss"
+        top_chunk = str(hits[0].get("chunk_text", "")).strip()
+        if top_chunk:
+            corpus = top_chunk.lower()
+            matched = [t for t in tokens if t in corpus]
+            if matched:
+                return _trim_wechat_text(top_chunk, limit=220), "kb_hit"
+
+    return None, "miss"
+
+
 def _build_web_rag_prompt(question: str, hits: list[dict], history_text: str = "") -> str:
     context = "\n\n".join([f"[{h['source_name']}] {(h['chunk_text'] or '')[:320]}" for h in hits[:4]])
     history_block = f"同一会话近期记录：\n{history_text}\n\n" if history_text else ""
@@ -1751,16 +1814,18 @@ async def wechat_callback(
     question = msg.get("Content", "").strip()
     web_url = _resolve_web_chat_url(request)
     if msg_type == "text" and question:
-        reply = (
-            "您好，已收到您的咨询。为了给您更完整、连续的回复，请进入网页客服继续沟通：\n"
-            f"{web_url}\n"
-            "进入后可直接提问，我会实时回复。"
-        )
+        quick_reply, route = _wechat_try_quick_answer(question)
+        if quick_reply:
+            reply = quick_reply
+            _log_event("wechat_quick_hit", f"route={route} from={from_user}")
+        else:
+            reply = _wechat_handoff_reply(web_url)
+            _log_event("wechat_handoff", f"reason=miss from={from_user}")
     else:
         reply = (
-            "您好，欢迎咨询。为了给您更完整、连续的回复，请进入网页客服：\n"
-            f"{web_url}\n"
-            "进入后可直接提问，我会实时回复。"
+            "\u60a8\u597d\uff0c\u76ee\u524d\u516c\u4f17\u53f7\u4ec5\u652f\u6301\u6587\u5b57\u54a8\u8be2\u3002"
+            "\u8bf7\u53d1\u9001\u6587\u5b57\u95ee\u9898\uff0c\u6216\u8fdb\u5165\u7f51\u9875\u5ba2\u670d\u7ee7\u7eed\u6c9f\u901a\uff1a\n"
+            f"{web_url}"
         )
 
     plain_reply = build_text_reply(to_user=from_user, from_user=to_user, content=reply)
