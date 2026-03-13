@@ -410,7 +410,18 @@ DIRECT_FAQ_ITEMS: list[dict[str, object]] = [
     {
         "id": "order_status",
         "title": "订单状态查询",
-        "patterns": ["订单状态", "订单查询", "查订单", "未发货", "处理中", "已完成"],
+        "patterns": [
+            "订单状态",
+            "订单查询",
+            "查订单",
+            "未发货",
+            "处理中",
+            "已完成",
+            "后台未刷新",
+            "订单未更新",
+            "已支付未更新",
+            "没刷新",
+        ],
         "reply": (
             "订单进度可在“我的订单”查看最新节点。"
             "若状态长时间未更新，请提供订单号和下单时间，我帮你进一步核查。"
@@ -473,7 +484,19 @@ DIRECT_FAQ_ITEMS: list[dict[str, object]] = [
     {
         "id": "payment_issue",
         "title": "支付异常",
-        "patterns": ["支付失败", "支付异常", "扣款", "重复扣款", "无法付款", "支付报错"],
+        "patterns": [
+            "支付失败",
+            "支付异常",
+            "扣款",
+            "重复扣款",
+            "无法付款",
+            "支付报错",
+            "已支付未生效",
+            "支付成功未生效",
+            "支付成功但订单未更新",
+            "已支付但未更新",
+            "已扣款未更新",
+        ],
         "reply": (
             "支付异常可先检查网络、支付方式限额与风控提示，再重试一次。"
             "若已扣款但订单未更新，请提供订单号、支付时间和截图，我会协助核账处理。"
@@ -590,23 +613,190 @@ def _direct_faq_reply(question: str) -> str | None:
     q = (question or "").strip().lower()
     if not q:
         return None
+    best_reply: str | None = None
+    best_pattern_len = -1
     for item in DIRECT_FAQ_ITEMS:
         patterns = item.get("patterns", [])
         if not isinstance(patterns, list):
             continue
-        if any(str(p).lower() in q for p in patterns):
-            return str(item.get("reply", "")).strip() or None
-    return None
+        reply = str(item.get("reply", "")).strip()
+        if not reply:
+            continue
+        for raw_pattern in patterns:
+            pattern = str(raw_pattern or "").strip().lower()
+            if not pattern or pattern not in q:
+                continue
+            # Prefer more specific matches (e.g. "优惠券") over broad words (e.g. "优惠").
+            if len(pattern) > best_pattern_len:
+                best_pattern_len = len(pattern)
+                best_reply = reply
+    return best_reply
 
 
-def _product_catalog_reply(question: str) -> str | None:
+def _format_catalog_profile(profile: dict) -> str:
+    if not isinstance(profile, dict):
+        return ""
+    bits: list[str] = []
+    category = str(profile.get("category") or "").strip()
+    if category:
+        bits.append(f"品类={category}")
+    min_budget = profile.get("min_budget")
+    max_budget = profile.get("max_budget")
+    if isinstance(min_budget, int) and isinstance(max_budget, int):
+        bits.append(f"预算={min_budget}-{max_budget}")
+    elif isinstance(max_budget, int):
+        bits.append(f"预算<={max_budget}")
+    elif isinstance(min_budget, int):
+        bits.append(f"预算>={min_budget}")
+    required_storage = profile.get("required_storage")
+    if isinstance(required_storage, int):
+        bits.append(f"容量>={required_storage}GB")
+    tags = profile.get("tags", [])
+    if isinstance(tags, list) and tags:
+        bits.append("关注点=" + ",".join(str(t) for t in tags[:4]))
+    return "；".join(bits)
+
+
+def _build_catalog_llm_prompt(question: str, resolved: dict, recent_messages: list[dict] | None) -> str:
+    mode = str(resolved.get("mode", "recommend"))
+    profile_text = _format_catalog_profile(resolved.get("profile", {}))
+    candidates = resolved.get("candidates", [])
+    rows: list[str] = []
+    if isinstance(candidates, list):
+        for idx, c in enumerate(candidates[:3], start=1):
+            if not isinstance(c, dict):
+                continue
+            model = str(c.get("model", "")).strip()
+            price = str(c.get("price_text", "")).strip()
+            chip = str(c.get("chip", "")).strip()
+            screen = c.get("screen_size")
+            screen_text = f"{screen}英寸" if isinstance(screen, (int, float)) else "未知"
+            storage = c.get("storage_options", [])
+            storage_text = "/".join(f"{int(v)}GB" for v in storage if isinstance(v, int)) if isinstance(storage, list) else ""
+            pros = c.get("pros", [])
+            cons = c.get("cons", [])
+            reasons = c.get("reasons", [])
+            rows.append(
+                f"{idx}. {model} | {price} | 屏幕:{screen_text} | 芯片:{chip or '未知'} | 容量:{storage_text or '未知'} | 优点:{';'.join(str(x) for x in pros[:2])} | 不足:{';'.join(str(x) for x in cons[:2])} | 命中:{';'.join(str(x) for x in reasons[:2])}"
+            )
+    history_rows: list[str] = []
+    if recent_messages:
+        for msg in reversed(recent_messages):
+            role = str(msg.get("role", "")).strip()
+            if role != "user":
+                continue
+            content = str(msg.get("content", "")).strip()
+            if not content:
+                continue
+            history_rows.append(content[:200])
+            if len(history_rows) >= 2:
+                break
+    history_rows.reverse()
+    history_block = "\n".join(history_rows)
+
+    if mode == "compare":
+        task = (
+            "你是中文电商客服。用户在做同类机型对比。\n"
+            "请输出：\n"
+            "1) 先给一句结论（推荐哪款）；\n"
+            "2) 再给 2-3 条差异点（拍照/性能/价格/便携性）；\n"
+            "3) 每款都要有优点和不足，不要只说参数；\n"
+            "4) 语气自然、简洁，120-220 字；\n"
+            "5) 候选列表已按优先级排序，默认优先第1条，不要引入候选外型号；\n"
+            "6) 只可使用候选中给出的参数，不得自行编造屏幕、芯片或容量；\n"
+            "7) 若用户未给出具体预算数字，不要自行补充预算金额。"
+        )
+    else:
+        task = (
+            "你是中文电商客服。请根据候选机型给出智能推荐。\n"
+            "请输出：\n"
+            "1) 先给结论：首推 + 备选；\n"
+            "2) 说明每款优点和不足；\n"
+            "3) 推荐理由要结合用户预算与需求；\n"
+            "4) 不要编造参数，不确定请写“以官方页面为准”；\n"
+            "5) 候选列表已按优先级排序，必须第1条=首推、第2条=备选，不要重排，不要引入候选外型号；\n"
+            "6) 只可使用候选中给出的参数，不得自行编造屏幕、芯片或容量；\n"
+            "7) 若用户未给出具体预算数字，不要自行补充预算金额；\n"
+            "8) 语气自然、简洁，120-220 字。"
+        )
+
+    return (
+        f"{task}\n\n"
+        f"用户当前问题：{question}\n"
+        f"会话用户历史：\n{history_block}\n\n"
+        f"用户需求画像：{profile_text}\n\n"
+        "候选机型：\n"
+        f"{chr(10).join(rows)}\n\n"
+        "请直接输出可发送给用户的最终回复："
+    )
+
+
+def _is_catalog_llm_answer_usable(answer: str, resolved: dict) -> bool:
+    text = (answer or "").strip()
+    if len(text) < 24:
+        return False
+    if text[-1] not in "。！？.!?":
+        return False
+    candidates = resolved.get("candidates", [])
+    model_names = []
+    if isinstance(candidates, list):
+        for row in candidates[:3]:
+            if not isinstance(row, dict):
+                continue
+            model = str(row.get("model", "")).strip()
+            if model:
+                model_names.append(model)
+    if model_names and not any(name in text for name in model_names):
+        return False
+    profile = resolved.get("profile", {})
+    has_budget_input = False
+    if isinstance(profile, dict):
+        has_budget_input = isinstance(profile.get("min_budget"), int) or isinstance(profile.get("max_budget"), int)
+    if not has_budget_input:
+        question = str(resolved.get("question", "")).strip()
+        has_budget_input = bool(re.search(r"(预算|价位|价格|多少钱).{0,12}\d", question))
+    if not has_budget_input and re.search(r"预算[^。；\n]{0,12}\d", text):
+        return False
+    return True
+
+
+def _product_catalog_reply(question: str, recent_messages: list[dict] | None = None) -> str | None:
     if not settings.product_catalog_enabled:
         return None
     try:
-        return product_catalog.answer(question)
+        resolved = product_catalog.resolve(question, recent_messages=recent_messages)
     except Exception as exc:
         _log_event("product_catalog_error", str(exc))
         return None
+    if not resolved:
+        return None
+
+    fallback = str(resolved.get("reply", "")).strip()
+    if not fallback:
+        return None
+
+    if not settings.product_catalog_llm_enabled:
+        return fallback
+    if not bool(resolved.get("needs_llm")):
+        return fallback
+    candidates = resolved.get("candidates", [])
+    if not isinstance(candidates, list) or not candidates:
+        return fallback
+
+    prompt = _build_catalog_llm_prompt(question, resolved, recent_messages)
+    try:
+        answer = ollama.chat(prompt, timeout_sec=max(6.0, settings.product_catalog_llm_timeout_sec)).strip()
+    except Exception as exc:
+        _log_event("product_catalog_llm_fallback", f"reason=exception err={exc}")
+        return fallback
+
+    answer = _strip_think_blocks(answer).strip()
+    if not answer:
+        return fallback
+    if not _is_catalog_llm_answer_usable(answer, resolved):
+        _log_event("product_catalog_llm_fallback", "reason=quality_gate")
+        return fallback
+    return answer
 
 
 def _is_business_question(question: str) -> bool:
@@ -679,14 +869,15 @@ def _web_rag_stream(question: str, session_id: str | None = None) -> Iterator[st
         return
 
     sid = _normalize_session_id(session_id)
-    history_text = _render_session_history(_session_get_recent_messages(sid))
+    recent_messages = _session_get_recent_messages(sid)
+    history_text = _render_session_history(recent_messages)
 
     preset = _preset_reply(q)
     if preset:
         yield preset
         return
 
-    product_reply = _product_catalog_reply(q)
+    product_reply = _product_catalog_reply(q, recent_messages=recent_messages)
     if product_reply:
         yield product_reply
         return
@@ -1087,6 +1278,8 @@ def healthz() -> dict:
         "general_fallback_enabled": settings.general_fallback_enabled,
         "product_catalog_enabled": settings.product_catalog_enabled,
         "product_catalog_path": settings.product_catalog_path,
+        "product_catalog_llm_enabled": settings.product_catalog_llm_enabled,
+        "product_catalog_llm_timeout_sec": settings.product_catalog_llm_timeout_sec,
         "product_catalog_loaded": bool(catalog_stats.get("loaded")),
         "product_catalog_products": int(catalog_stats.get("product_count", 0) or 0),
         "product_catalog_verified_on": str(catalog_stats.get("verified_on", "")),

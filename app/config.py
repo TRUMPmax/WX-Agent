@@ -27,6 +27,8 @@ class Settings:
     general_fallback_enabled: bool = _as_bool(os.getenv("GENERAL_FALLBACK_ENABLED", "1"), default=True)
     product_catalog_enabled: bool = _as_bool(os.getenv("PRODUCT_CATALOG_ENABLED", "1"), default=True)
     product_catalog_path: str = os.getenv("PRODUCT_CATALOG_PATH", "./catalog/apple_cn_devices.json").strip()
+    product_catalog_llm_enabled: bool = _as_bool(os.getenv("PRODUCT_CATALOG_LLM_ENABLED", "1"), default=True)
+    product_catalog_llm_timeout_sec: float = float(os.getenv("PRODUCT_CATALOG_LLM_TIMEOUT_SEC", "18"))
     chat_session_ttl_sec: int = int(os.getenv("CHAT_SESSION_TTL_SEC", "1800"))
     chat_session_max_turns: int = int(os.getenv("CHAT_SESSION_MAX_TURNS", "6"))
     chat_session_cleanup_sec: int = int(os.getenv("CHAT_SESSION_CLEANUP_SEC", "120"))

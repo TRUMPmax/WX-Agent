@@ -42,7 +42,8 @@ class OllamaClient:
             "think": False,
             "options": {
                 "temperature": 0.2,
-                "num_predict": 160,
+                # Keep enough room for recommendation/comparison answers.
+                "num_predict": 800,
             },
         }
         timeout = timeout_sec if timeout_sec is not None else 120
