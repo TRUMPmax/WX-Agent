@@ -4,28 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WX Agent 智能客服</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=ui-20260505-1518">
 </head>
-<body>
-  <div class="ambient"></div>
+<body class="min-h-screen antialiased">
+  <div class="ambient" aria-hidden="true"></div>
   <div class="shell">
     <aside class="left-panel">
       <div class="brand">
         <div class="brand-mark">WX</div>
         <div>
+          <p class="brand-kicker">Service Console</p>
           <h1>智能客服中心</h1>
           <p>Web 在线咨询 · 实时响应</p>
         </div>
       </div>
+
       <div class="panel-card">
-        <h2>常见咨询</h2>
-        <button class="quick" data-q="商品规格咨询">商品规格咨询</button>
-        <button class="quick" data-q="退换货政策">退换货政策</button>
-        <button class="quick" data-q="账号与登录问题">账号与登录问题</button>
-        <button class="quick" data-q="售后处理建议">售后处理建议</button>
+        <div class="panel-card-heading">
+          <h2>常见咨询</h2>
+          <span>FAQ</span>
+        </div>
+        <button class="quick" data-q="商品规格咨询" type="button">
+          <span>商品规格咨询</span>
+          <i aria-hidden="true">→</i>
+        </button>
+        <button class="quick" data-q="退换货政策" type="button">
+          <span>退换货政策</span>
+          <i aria-hidden="true">→</i>
+        </button>
+        <button class="quick" data-q="账号与登录问题" type="button">
+          <span>账号与登录问题</span>
+          <i aria-hidden="true">→</i>
+        </button>
+        <button class="quick" data-q="售后处理建议" type="button">
+          <span>售后处理建议</span>
+          <i aria-hidden="true">→</i>
+        </button>
       </div>
+
       <div class="panel-note">
-        <p>提示：尽量描述商品名称、订单号或具体场景，回复会更准确。</p>
+        <span class="note-label">提示</span>
+        <p>尽量描述商品名称、订单号或具体场景，回复会更准确。</p>
       </div>
     </aside>
 
@@ -41,19 +61,31 @@
 
         <div class="chat-header-right">
           <label for="modelProvider">回复模型</label>
-          <select id="modelProvider" aria-label="选择模型"></select>
+          <select id="modelProvider" class="native-provider-select" aria-label="选择模型"></select>
+          <div id="modelSelect" class="model-select">
+            <button class="model-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span class="model-trigger-text">加载模型中</span>
+              <span class="model-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div class="model-menu" role="listbox"></div>
+          </div>
         </div>
       </header>
 
-      <section id="messages" class="messages"></section>
+      <section id="messages" class="messages" aria-live="polite"></section>
 
       <form id="composer" class="composer">
-        <textarea id="input" placeholder="请输入你的问题，支持连续追问..." rows="1"></textarea>
-        <button id="send" type="submit">发送</button>
+        <div class="input-wrap">
+          <span class="floating-placeholder">请输入你的问题，支持连续追问...</span>
+          <textarea id="input" aria-label="请输入你的问题" placeholder=" " rows="1"></textarea>
+        </div>
+        <button id="send" type="submit" aria-label="发送消息">
+          <span>发送</span>
+        </button>
       </form>
     </main>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=ui-20260505-1518"></script>
 </body>
 </html>
